@@ -50,6 +50,11 @@ var UPDATE = command.Command{
 	Run: UpdateCLI,
 }
 
+const (
+	httpClientTimeout = 60 * time.Second
+	executablePerm    = 0o755
+)
+
 var (
 	fetchLatestReleaseManifest            = defaultFetchLatestReleaseManifest
 	fetchVersionReleaseManifest           = defaultFetchVersionReleaseManifest
@@ -59,7 +64,7 @@ var (
 	getUpdateGlobalConfig                 = command.GetGlobalConfig
 	setUpdateGlobalConfig                 = command.SetGlobalConfig
 	findUpdateGlobalConfig                = utils.FindGlobalConfig
-	updateHTTPClient                      = &http.Client{Timeout: 60 * time.Second}
+	updateHTTPClient                      = &http.Client{Timeout: httpClientTimeout}
 	updateStdout                io.Writer = os.Stdout
 )
 
@@ -192,7 +197,7 @@ func defaultApplyReleaseUpdate(manifest *release.Manifest) error {
 
 	if manifest.SHA256 != "" {
 		got := fmt.Sprintf("%x", sum.Sum(nil))
-		if !strings.EqualFold(got, manifest.SHA256) {
+		if !strings.EqualFold(got, manifest.SHA256) { // SHA256 comparison is case-insensitive
 			return fmt.Errorf("downloaded file checksum mismatch: got %s want %s", got, manifest.SHA256)
 		}
 	}
@@ -211,7 +216,7 @@ func defaultApplyReleaseUpdate(manifest *release.Manifest) error {
 		return err
 	}
 
-	mode := os.FileMode(0o755)
+	mode := os.FileMode(executablePerm)
 	if info, err := os.Stat(targetPath); err == nil {
 		mode = info.Mode()
 	}
@@ -346,7 +351,7 @@ func extractZipExecutable(goos, archivePath, dstPath string) error {
 }
 
 func writeExecutableFromReader(r io.Reader, dstPath string) error {
-	out, err := os.OpenFile(dstPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	out, err := os.OpenFile(dstPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, executablePerm)
 	if err != nil {
 		return err
 	}

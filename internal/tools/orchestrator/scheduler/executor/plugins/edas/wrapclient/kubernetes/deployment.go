@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -89,4 +90,9 @@ func (e *wrapKubernetes) GetK8sDeployList(group string, services *[]apistructs.S
 
 	l.Debugf("old service list : %+v", services)
 	return nil
+}
+
+// GetDeployment get deployment by name via k8s API
+func (e *wrapKubernetes) GetDeployment(ctx context.Context, name string) (*appsv1.Deployment, error) {
+	return e.cs.AppsV1().Deployments(e.namespace).Get(ctx, name, metav1.GetOptions{})
 }

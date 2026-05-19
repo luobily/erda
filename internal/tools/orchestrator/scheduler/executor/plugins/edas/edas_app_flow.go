@@ -84,7 +84,7 @@ func (e *EDAS) createService(ctx context.Context, sg *apistructs.ServiceGroup, s
 	}
 
 	appName := utils.CombineEDASAppName(sg.Type, sg.ID, s.Name)
-	selector := e.resolveServiceSelector(appName, sg.ID, s.Name)
+	selector := e.resolveServiceSelector(ctx, appName, sg.ID, s.Name)
 
 	// Align k8s Service state even if a previous async flow already created it.
 	if err = e.wrapClientSet.CreateOrUpdateK8sService(ctx, appName, selector, diceyml.ComposeIntPortsFromServicePorts(s.Ports)); err != nil {
@@ -129,7 +129,7 @@ func (e *EDAS) updateService(ctx context.Context, sg *apistructs.ServiceGroup, s
 			return err
 		}
 
-		selector := e.resolveServiceSelector(appName, sg.ID, s.Name)
+		selector := e.resolveServiceSelector(ctx, appName, sg.ID, s.Name)
 		if err := e.wrapClientSet.CreateOrUpdateK8sService(ctx, appName, selector, diceyml.ComposeIntPortsFromServicePorts(s.Ports)); err != nil {
 			l.Errorf("failed to update k8s service, appName: %s, error: %v", appName, err)
 			return errors.Wrap(err, "edas update k8s service")
@@ -139,13 +139,38 @@ func (e *EDAS) updateService(ctx context.Context, sg *apistructs.ServiceGroup, s
 	return nil
 }
 
-func (e *EDAS) resolveServiceSelector(appName, sgID, serviceName string) map[string]string {
-	var deployment *appsv1.Deployment
-	if currentDeployment, err := e.wrapEDASClient.GetAppDeployment(appName); err == nil {
-		deployment = currentDeployment
+func (e *EDAS) resolveServiceSelector(ctx context.Context, appName, sgID, serviceName string) map[string]string {
+	l := e.l.WithField("func", "resolveServiceSelector")
+
+	for i := 0; i < 3; i++ {
+		// 优先通过 EDAS API 查询
+		if dep, err := e.wrapEDASClient.GetAppDeployment(appName); err == nil && dep != nil {
+			selector := resolveServiceSelectorFromDeployment(dep, sgID, serviceName)
+			l.Infof("resolved selector from edas api, appName: %s, selector: %v", appName, selector)
+			return selector
+		} else if err != nil {
+			l.Warnf("failed to get deployment from edas api, appName: %s, attempt: %d, err: %v", appName, i+1, err)
+		}
+
+		// EDAS API 失败时，通过 k8s API 兜底
+		if dep, err := e.wrapClientSet.GetDeployment(ctx, appName); err == nil && dep != nil {
+			selector := resolveServiceSelectorFromDeployment(dep, sgID, serviceName)
+			l.Infof("resolved selector from k8s api, appName: %s, selector: %v", appName, selector)
+			return selector
+		} else if err != nil {
+			l.Warnf("failed to get deployment from k8s api, appName: %s, attempt: %d, err: %v", appName, i+1, err)
+		}
+
+		if i < 2 {
+			time.Sleep(5 * time.Second)
+		}
 	}
 
-	return resolveServiceSelectorFromDeployment(deployment, sgID, serviceName)
+	l.Errorf("failed to resolve selector after retries, appName: %s, using default selector", appName)
+	return map[string]string{
+		types.LabelServiceName:    serviceName,
+		types.LabelServiceGroupID: sgID,
+	}
 }
 
 func resolveServiceSelectorFromDeployment(deployment *appsv1.Deployment, sgID, serviceName string) map[string]string {
