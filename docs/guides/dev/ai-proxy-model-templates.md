@@ -9,8 +9,9 @@ ai-proxy 在构建时通过 `go:embed` 将 `cmd/ai-proxy/conf/templates` 嵌入�
 - `qwen3.8-27b`
 - `kimi-k3`
 - `deepseek-v4-pro-0813`
+- `glm-5.2`
 
-四个模板默认推荐服务商均为 `aliyun-bailian`，实际模型名默认等于模板 ID。线上仍需手动创建百炼服务商实例、模型实例及授权关系。
+六个模板默认推荐服务商均为 `aliyun-bailian`，实际模型名默认等于模板 ID。线上仍需手动创建百炼服务商实例、模型实例及授权关系。
 
 模板校验命令：
 
